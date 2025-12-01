@@ -1,0 +1,7 @@
+pandas
+google-play-scraper
+numpy
+nltk
+scikit-learn
+transformers
+torch
