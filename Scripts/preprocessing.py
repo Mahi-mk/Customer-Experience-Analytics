@@ -1,63 +1,64 @@
-import os
 import pandas as pd
-import re
-from config import DATA_PATHS
+from config import COLUMN_RENAME_MAP, FINAL_COLUMNS, DATA_SOURCE, CLEAN_DATA_FILE
+from scraper import scrape_data # Import the scraping function
 
-# -----------------------------
-# Step 0: Load raw reviews CSV
-# -----------------------------
-df_raw = pd.read_csv(DATA_PATHS["raw_reviews"])
+def preprocess_data(df):
+    """
+    Cleans, transforms, and formats the raw review DataFrame.
+    """
+    print("\n--- Starting Data Preprocessing ---")
+    
+    # 1. Select and rename required columns
+    # ... (Preprocessing logic remains the same: renaming, dropping NaN, removing duplicates, date formatting, adding 'source' column)
+    cols_to_keep = list(COLUMN_RENAME_MAP.keys()) + ['bank'] 
+    
+    try:
+        df_clean = df[cols_to_keep]
+    except KeyError as e:
+        print(f"!!! ERROR: Missing column from raw data: {e}")
+        return pd.DataFrame(columns=FINAL_COLUMNS) 
 
-# -----------------------------
-# Step 1: Clean Text Function
-# -----------------------------
-def clean_text(text):
-    if not isinstance(text, str):
-        return ""
-    text = text.lower()                     # lowercase
-    text = re.sub(r'\s+', ' ', text)       # remove extra spaces
-    text = re.sub(r'[^\w\s]', '', text)    # remove punctuation
-    return text
+    df_clean = df_clean.rename(columns=COLUMN_RENAME_MAP)
+    
+    initial_count = len(df_clean)
+    df_clean.dropna(subset=['review_text', 'rating', 'date'], inplace=True)
+    dropped_count = initial_count - len(df_clean)
+    print(f"-> Dropped {dropped_count} rows with missing data.")
+    
+    df_clean.drop_duplicates(subset=['review_text', 'bank', 'date'], inplace=True)
+    print(f"-> Total unique reviews after dropping duplicates: {len(df_clean)}")
 
-# -----------------------------
-# Step 2: Apply text cleaning
-# -----------------------------
-df_raw['review'] = df_raw['review'].apply(clean_text)
+    df_clean['date'] = pd.to_datetime(df_clean['date']).dt.strftime('%Y-%m-%d')
+    df_clean['source'] = DATA_SOURCE
+    
+    df_final = df_clean[FINAL_COLUMNS]
 
-# -----------------------------
-# Step 3: Remove duplicates
-# -----------------------------
-df_raw.drop_duplicates(subset=["review", "bank"], inplace=True)
+    print(f"\nFinal clean dataset size: {len(df_final)} reviews.")
+    print(f"Reviews per bank:\n{df_final['bank'].value_counts()}")
+    
+    # Save the cleaned data
+    df_final.to_csv(CLEAN_DATA_FILE, index=False)
+    print(f"\nClean data saved to {CLEAN_DATA_FILE}")
 
-# -----------------------------
-# Step 4: Handle missing data
-# -----------------------------
-df_raw.dropna(subset=["review", "rating", "date"], inplace=True)
+    return df_final
 
-# -----------------------------
-# Step 5: Normalize date
-# -----------------------------
-df_raw["date"] = pd.to_datetime(df_raw["date"]).dt.strftime("%Y-%m-%d")
-
-# -----------------------------
-# Step 6: Reorder columns to project spec
-# -----------------------------
-df_clean = df_raw[["review", "rating", "date", "bank", "source"]]
-
-# -----------------------------
-# Step 7: Ensure output directory exists
-# -----------------------------
-os.makedirs(os.path.dirname(DATA_PATHS["processed_reviews"]), exist_ok=True)
-
-# -----------------------------
-# Step 8: Save cleaned CSV
-# -----------------------------
-df_clean.to_csv(DATA_PATHS["processed_reviews"], index=False)
-
-# -----------------------------
-# Step 9: Summary print
-# -----------------------------
-print("\n✔ Task 1 preprocessing complete!")
-print(f"✔ Total reviews after cleaning: {len(df_clean)}")
-print(f"✔ File saved to → {DATA_PATHS['processed_reviews']}\n")
-
+# ------------------------------------
+# ORCHESTRATION BLOCK (Replaces main.py)
+# ------------------------------------
+if __name__ == '__main__':
+    print("--- Executing Task 1 Pipeline ---")
+    
+    # 1. Scrape the data
+    raw_df = scrape_data()
+    
+    # Check if scraping returned data
+    if raw_df.empty:
+        print("\nPipeline failed: No raw data collected.")
+    else:
+        # 2. Preprocess the data
+        clean_df = preprocess_data(raw_df)
+        
+        if not clean_df.empty:
+            print("\n--- Pipeline Completed Successfully ---")
+        else:
+            print("\nPipeline failed: Preprocessing resulted in an empty dataset.")
